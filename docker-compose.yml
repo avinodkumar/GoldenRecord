@@ -1,0 +1,97 @@
+# GoldenRecord local stack: open-source stand-ins for the Fabric pieces.
+#
+#   docker compose up -d --build                     # lakehouse + agents + UI + MLflow
+#   docker compose --profile ollama up -d            # also run a local LLM (Ollama)
+#   docker compose --profile deploy run --rm toolbox # build wheel + deploy notebooks to Fabric
+#
+# Fabric item            -> local stand-in
+#   OneLake / Lakehouse  -> Delta tables in the `lakehouse` volume (delta-rs) + DuckDB for SQL
+#   Data Factory pipeline-> orchestrator in `api` (POST /runs, optional SCHEDULE_MINUTES)
+#   Notebooks + AI Funcs -> agents in `api`, LLM via LLM_PROVIDER
+#   Purview DQ scorecard -> Quality agent + `ui` Data quality page
+#   Activator            -> Sentinel agent (+ ALERT_WEBHOOK_URL for Teams)
+#   Power BI + write-back-> `ui` (Streamlit)
+#   Fabric Data Science  -> `mlflow` tracking server + model registry
+
+name: goldenrecord
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+  image: goldenrecord:latest
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - lakehouse:/lakehouse
+
+services:
+  api:
+    <<: *app
+    container_name: goldenrecord-api
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "8000:8000"
+    depends_on:
+      mlflow:
+        condition: service_started
+    restart: unless-stopped
+
+  ui:
+    <<: *app
+    container_name: goldenrecord-ui
+    command: ["streamlit", "run", "ui/app.py", "--server.port=8501", "--server.address=0.0.0.0",
+              "--server.headless=true", "--browser.gatherUsageStats=false"]
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    healthcheck:
+      disable: true
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: goldenrecord-mlflow
+    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000",
+              "--backend-store-uri", "sqlite:////mlflow/mlflow.db",
+              "--artifacts-destination", "/mlflow/artifacts",
+              "--allowed-hosts", "*"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow:/mlflow
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: goldenrecord-ollama
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+  toolbox:
+    build:
+      context: .
+      target: toolbox
+    image: goldenrecord-toolbox:latest
+    profiles: ["deploy"]
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./dist:/app/dist
+      - ./build:/app/build
+
+volumes:
+  lakehouse:
+  mlflow:
+  ollama:

@@ -1,0 +1,30 @@
+# Sentinel alert rules (the local stand-in for Fabric Activator rules on dq_run_metrics).
+# condition: below | above (absolute) | drop_vs_previous | rise_vs_previous (compared to the previous run)
+rules:
+  - id: AL01
+    name: Pass rate dropped
+    metric: pass_rate
+    condition: drop_vs_previous
+    threshold: 0.02        # 2 percentage points
+    severity: high
+
+  - id: AL02
+    name: Anomaly spike
+    metric: anomalies
+    condition: rise_vs_previous
+    threshold: 50          # more than 50 extra flagged invoices
+    severity: medium
+
+  - id: AL03
+    name: A rule is badly breached
+    metric: worst_rule_pass_rate
+    condition: below
+    threshold: 0.75
+    severity: high
+
+  - id: AL04
+    name: Quarantine share too high
+    metric: quarantine_rate
+    condition: above
+    threshold: 0.40
+    severity: medium

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Generated data (recreate with: python -m goldenrecord all)
+data/raw/
+data/truth/
+data/bronze/
+data/silver/
+data/gold/
+data/labels/
+data/reports/
+data/lakehouse/
+
+# Local stack and deploy outputs
+.env
+mlruns/
+build/

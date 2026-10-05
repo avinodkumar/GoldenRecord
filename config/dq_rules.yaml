@@ -1,0 +1,89 @@
+# Data-quality rule catalog.
+# Each rule runs locally (goldenrecord.rules) and is mirrored as a Microsoft Purview
+# data-quality rule on the Silver tables (see purview/README.md). The brief requires 5+ active rules.
+rules:
+  - id: R01
+    name: Vendor tax ID is present
+    entity: vendor
+    dimension: completeness
+    type: not_null
+    column: tax_id
+    severity: high
+    purview_rule_type: Empty/blank fields
+
+  - id: R02
+    name: Vendor tax ID has a valid format
+    entity: vendor
+    dimension: validity
+    type: regex
+    column: tax_id
+    pattern: "^[A-Z]{2}[A-Z0-9]{10}$"
+    skip_null: true
+    severity: high
+    purview_rule_type: String format match
+
+  - id: R03
+    name: Vendor country is a valid ISO code
+    entity: vendor
+    dimension: validity
+    type: not_null
+    column: country_iso2
+    severity: medium
+    purview_rule_type: Table lookup (ref_country)
+
+  - id: R04
+    name: Vendor email has a valid format
+    entity: vendor
+    dimension: validity
+    type: regex
+    column: email
+    pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    skip_null: true
+    severity: low
+    purview_rule_type: String format match
+
+  - id: R05
+    name: Invoice amount is present and positive
+    entity: invoice
+    dimension: validity
+    type: positive
+    column: amount
+    severity: high
+    purview_rule_type: Custom (amount > 0)
+
+  - id: R06
+    name: Invoice date is valid and not in the future
+    entity: invoice
+    dimension: timeliness
+    type: date_not_future
+    column: invoice_date
+    severity: high
+    purview_rule_type: Custom (invoice_date <= current_date())
+
+  - id: R07
+    name: Invoice currency is a supported ISO code
+    entity: invoice
+    dimension: validity
+    type: allowed_values
+    column: currency
+    values: [INR, USD, GBP, EUR, SGD]
+    severity: medium
+    purview_rule_type: Table lookup (ref_currency)
+
+  - id: R08
+    name: Invoice vendor exists in the vendor master
+    entity: invoice
+    dimension: consistency
+    type: reference
+    column: vendor_record_key
+    severity: high
+    purview_rule_type: Table lookup (silver_vendor.record_key)
+
+  - id: R09
+    name: Invoice number is unique per source
+    entity: invoice
+    dimension: uniqueness
+    type: unique
+    column: record_key
+    severity: high
+    purview_rule_type: Unique values
