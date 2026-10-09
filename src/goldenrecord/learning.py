@@ -18,9 +18,19 @@ def training_set(pairs: pd.DataFrame, decisions: pd.DataFrame) -> pd.DataFrame:
 
     The review queue only holds uncertain pairs, so steward labels alone are often one-sided.
     """
+    if decisions.empty:
+        decisions = pd.DataFrame(columns=["left_key", "right_key", "decision", "decided_at"])
     latest = decisions.sort_values("decided_at").drop_duplicates(["left_key", "right_key"], keep="last")
     steward = latest.merge(pairs, on=["left_key", "right_key"])
     steward = steward.assign(y=(steward["decision"] == "match").astype(int), label_source="steward")
+    if "decided_by" in pairs:  # pairs decided by a steward-approved match pattern are steward labels too
+        by_pattern = pairs[pairs["decided_by"].astype(str).str.startswith("MATCH:")]
+        done = set(zip(steward["left_key"], steward["right_key"]))
+        keep = pd.Series([(a, b) not in done for a, b in zip(by_pattern["left_key"], by_pattern["right_key"])],
+                         index=by_pattern.index, dtype=bool)
+        by_pattern = by_pattern.loc[keep]
+        steward = pd.concat([steward, by_pattern.assign(y=by_pattern["merge"].astype(int), label_source="steward")],
+                            ignore_index=True)
     labelled = set(zip(steward["left_key"], steward["right_key"]))
     rest = pairs[[(a, b) not in labelled for a, b in zip(pairs["left_key"], pairs["right_key"])]]
     auto = []

@@ -31,10 +31,13 @@ def consistency_alerts(vendors: pd.DataFrame, xref: pd.DataFrame, run_id: str) -
             issues.append("members in different countries")
         if "bank_token" in g and g["bank_token"].dropna().nunique() > 1:
             issues.append("different bank accounts")
-        names = g["vendor_name_norm"].dropna().unique().tolist()
+        # Names alone are weak evidence: typos can split words ("GREENLEA FSTEEL"). Compare without spaces,
+        # and only flag when no shared tax ID or bank account vouches for the merge.
+        names = [n.replace(" ", "") for n in g["vendor_name_norm"].dropna().unique()]
         worst = min((name_similarity(a, b) for i, a in enumerate(names) for b in names[i + 1:]), default=1.0)
-        if worst < 0.6:
-            issues.append(f"dissimilar names (similarity {worst:.2f})")
+        shared_id = len(taxes) == 1 or ("bank_token" in g and g["bank_token"].dropna().nunique() == 1)
+        if worst < 0.6 and not shared_id:
+            issues.append(f"dissimilar names (similarity {worst:.2f}) and no shared tax ID or bank account")
         if issues:
             rows.append({"master_key": key, "issues": "; ".join(issues), "members": ",".join(g["record_key"]),
                          "member_count": len(g), "run_id": run_id})

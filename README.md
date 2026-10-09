@@ -43,7 +43,7 @@ PII is tokenized and masked from Bronze onwards; raw values live only in a OneLa
 | `powerbi/`, `activator/`, `purview/` | Configuration guides (Purview optional) |
 | `docs/` | Positioning, architecture, roadmap, data model, break-it answers, ADRs |
 | `Dockerfile`, `docker-compose.yml`, `ui/` | **Offline dev harness** only ([docs/08-dev-harness.md](docs/08-dev-harness.md)) |
-| `tests/` | 24 tests, including the three break scenarios and constraint/engine parity |
+| `tests/` | 25 tests, including the three break scenarios and constraint/engine parity |
 
 ## Run locally (dev harness)
 

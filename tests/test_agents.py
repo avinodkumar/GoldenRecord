@@ -159,6 +159,22 @@ def test_scenario_thousands_of_issues_become_a_short_pattern_queue(lake):
     assert fix["pattern_id"] not in set(lake.read("steward_patterns")["pattern_id"])
 
 
+def test_approved_patterns_do_not_raise_false_suspect_alerts(lake):
+    run_pipeline(lake, as_of=AS_OF, use_env_llm=False)
+    st, ctx = StewardAssistant(), ctx_for(lake)
+    for p in lake.read("steward_patterns").itertuples():
+        if not p.needs_input:
+            st.decide_pattern(ctx, p.pattern_id, "approve", "steward")
+    s = run_pipeline(lake, as_of=AS_OF, use_env_llm=False)["summary"]
+    truth = pd.read_csv(lake.truth_dir / "vendor_truth.csv", dtype=str)
+    tid = dict(zip(truth["source_system"] + ":" + truth["source_vendor_id"], truth["true_vendor_id"]))
+    for a in lake.read("gold_cluster_alerts").itertuples():  # every remaining alert must be a real false merge
+        assert len({tid[m] for m in a.members.split(",")}) > 1, a.issues
+    from goldenrecord.learning import training_set
+    labels = training_set(lake.read("silver_match_pairs"), lake.read("steward_decisions"))
+    assert (labels["label_source"] == "steward").sum() > 0  # pattern approvals count as steward labels
+
+
 def test_sentinel_raises_alert_on_bad_batch(lake):
     run_pipeline(lake, as_of=AS_OF, use_env_llm=False)
     synth.inject_bad_batch(lake.landing_dir, n=800, truth_dir=lake.truth_dir)

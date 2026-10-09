@@ -7,7 +7,7 @@ architect (Vinod), **DE** data engineer, **AI** AI/ML engineer, **BI** Power BI 
 
 | Milestone | Day | Exit criteria |
 |---|---|---|
-| M0 Tested core | 1 | ✅ Agents, rule library, pattern queue, PII protection, MLV SQL generation; 24 tests; ablation runs |
+| M0 Tested core | 1 | ✅ Agents, rule library, pattern queue, PII protection, MLV SQL generation; 25 tests; ablation runs |
 | M1 Fabric foundation | 3 | Workspace, Lakehouse, Environment with wheel, Key Vault key; nb_01 Bronze with tokenized PII |
 | M2 Detect and learn in Fabric | 7 | nb_02 learns mappings with AI Functions (second run: 0 AI calls); nb_03 MLVs with constraints and quarantine view |
 | M3 Resolve and steward | 11 | nb_04 golden records and patterns; translytical task flow approves a pattern end to end; Activator alert fires |
