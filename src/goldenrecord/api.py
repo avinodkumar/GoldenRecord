@@ -24,6 +24,7 @@ from . import synth
 from .agents import ProfilerAgent, StewardAssistant
 from .agents.base import AgentContext
 from .agents.orchestrator import run_pipeline
+from .library import RuleLibrary
 from .llm import get_llm
 from .store import Lakehouse
 
@@ -87,6 +88,24 @@ class GenerateRequest(BaseModel):
 class RuleRequest(BaseModel):
     text: str
     accept: bool = False
+    override: bool = False
+    reviewer: str = "steward"
+
+
+class PatternDecision(BaseModel):
+    decision: str
+    reviewer: str
+    canonical: str | None = None
+    note: str = ""
+
+
+class Reviewer(BaseModel):
+    reviewer: str
+    note: str = ""
+
+
+class UnmergeRequest(Reviewer):
+    record_key: str
 
 
 class PairRequest(BaseModel):
@@ -143,7 +162,59 @@ def clear_bad_batch():
 def draft_rule(req: RuleRequest):
     if not lake.exists("silver_vendor"):
         raise HTTPException(409, "run the pipeline first so the Profiler has Silver data to check against")
-    return clean(ProfilerAgent().draft_rule(_ctx(), req.text, req.accept))
+    return clean(ProfilerAgent().draft_rule(_ctx(), req.text, req.accept, req.override, req.reviewer))
+
+
+@app.post("/rules/{rule_id}/promote")
+def promote_rule(rule_id: str, req: Reviewer):
+    result = ProfilerAgent().promote_rule(_ctx(), rule_id, req.reviewer)
+    if not result["ok"]:
+        raise HTTPException(404, result["error"])
+    return clean(result)
+
+
+@app.get("/patterns")
+def patterns(limit: int = 100):
+    df = lake.read("steward_patterns")
+    return [] if df.empty else clean(df.head(limit).to_dict("records"))
+
+
+@app.post("/patterns/{pattern_id}/decision")
+def decide_pattern(pattern_id: str, req: PatternDecision):
+    result = StewardAssistant().decide_pattern(_ctx(), pattern_id, req.decision, req.reviewer, req.canonical, req.note)
+    if not result["ok"]:
+        raise HTTPException(400, result["error"])
+    return clean(result)
+
+
+@app.get("/library")
+def library(limit: int = 200):
+    df = RuleLibrary(lake).history()
+    return [] if df.empty else clean(df.sort_values("library_version", ascending=False).head(limit).to_dict("records"))
+
+
+@app.post("/library/{item_id}/retire")
+def retire(item_id: str, req: Reviewer):
+    try:
+        return {"library_version": RuleLibrary(lake).retire(item_id, req.reviewer, req.note)}
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.get("/golden/{master_key}")
+def explain(master_key: str):
+    result = StewardAssistant().explain(_ctx(), master_key)
+    if not result["ok"]:
+        raise HTTPException(404, result["error"])
+    return clean(result)
+
+
+@app.post("/golden/unmerge")
+def unmerge(req: UnmergeRequest):
+    result = StewardAssistant().unmerge(_ctx(), req.record_key, req.reviewer, req.note)
+    if not result["ok"]:
+        raise HTTPException(400, result["error"])
+    return clean(result)
 
 
 @app.get("/review/queue")

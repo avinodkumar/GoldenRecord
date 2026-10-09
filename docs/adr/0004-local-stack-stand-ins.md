@@ -1,6 +1,6 @@
 # ADR 0004 · Local Docker stack with open-source stand-ins for Fabric services
 
-**Status:** Accepted · 2026-10-04
+**Status:** Accepted · 2026-10-04 · scoped by ADR 0005: the stack is an offline dev harness, not the solution
 
 ## Context
 
@@ -10,12 +10,12 @@ available. Fabric, Purview, Activator and Power BI cannot run in containers.
 ## Decision
 
 Ship a `docker compose` stack where each Fabric piece has an open-source stand-in (table in
-[08-agents-and-local-stack.md](../08-agents-and-local-stack.md)): Delta Lake tables via delta-rs for
+[08-dev-harness.md](../08-dev-harness.md)): Delta Lake tables via delta-rs for
 the Lakehouse, a FastAPI agent service for the pipeline and notebooks, Streamlit for the reports and
 write-back, an MLflow server for Data Science, and the Sentinel agent for Activator. A `toolbox` image
 with the Fabric CLI builds the wheel and deploys the notebooks when Fabric access arrives.
 
-The LLM is pluggable (`none`, `anthropic`, `azure_openai`, `ollama`), and every agent has a
+The LLM is pluggable (narrowed to `none` and `azure_openai` by ADR 0005), and every agent has a
 deterministic fallback, so the stack also runs offline.
 
 ## Consequences

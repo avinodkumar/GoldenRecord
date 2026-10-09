@@ -352,7 +352,7 @@ def generate(n_vendors: int = 3000, n_invoices: int = 45000, seed: int = 42,
             elif dtype == "date_invalid":
                 inv["date"] = {"ERP_A": "20251345", "ERP_B": "31-FEB-2025", "ERP_C": "2025-13-45"}[source]
             elif dtype == "currency_invalid":
-                inv["currency"] = rng.choice(["", "XXX", "RS"])
+                inv["currency"] = rng.choice(["", "XXX", "RS"] if tv.country == "IN" else ["", "XXX"])
             elif dtype == "orphan_vendor":
                 inv["vendor"] = {"ERP_A": f"{9900000 + rng.randint(0, 99999):010d}",
                                  "ERP_B": str(990000 + rng.randint(0, 9999)),

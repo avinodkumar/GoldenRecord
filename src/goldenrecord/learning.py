@@ -52,11 +52,13 @@ def train_matcher(pairs: pd.DataFrame, decisions: pd.DataFrame, tracking_uri: st
                "recall": float(recall_score(y_test, pred, zero_division=0)),
                "n_labels": float(len(data)), "n_steward_labels": float(n_steward), "match_share": float(y.mean())}
 
-    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "file:./mlruns")
-    if uri.startswith("file:"):
-        # Local runs without a tracking server; the Docker stack uses the MLflow server instead.
-        os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
-    mlflow.set_tracking_uri(uri)
+    # "fabric": keep the workspace's built-in MLflow tracking (Fabric Data Science) untouched.
+    if tracking_uri != "fabric":
+        uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "file:./mlruns")
+        if uri.startswith("file:"):
+            # Local runs without a tracking server; the Docker harness uses the MLflow server instead.
+            os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+        mlflow.set_tracking_uri(uri)
     mlflow.set_experiment(MODEL_NAME)
     with mlflow.start_run() as run:
         mlflow.log_params({"features": ",".join(FEATURES), "model": "LogisticRegression"})

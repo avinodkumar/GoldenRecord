@@ -15,6 +15,7 @@ data/gold/
 data/labels/
 data/reports/
 data/lakehouse/
+data/ablation/
 
 # Local stack and deploy outputs
 .env

@@ -1,7 +1,11 @@
-"""GoldenRecord control room (Streamlit): the local stand-in for the Power BI reports and the steward
-write-back app. Reads the lakehouse directly; every action goes through the agent API."""
+"""GoldenRecord dev harness UI (Streamlit). OFFLINE DEVELOPMENT ONLY.
+
+In Fabric these screens are Power BI reports and the actions are translytical task flows calling
+User Data Functions (fabric/functions/). This harness lets the team build and rehearse without Fabric.
+"""
 from __future__ import annotations
 
+import json
 import os
 
 import pandas as pd
@@ -38,9 +42,10 @@ def pct(x) -> str:
 
 
 st.sidebar.title("GoldenRecord")
-st.sidebar.caption("AI data-quality gatekeeper · local stack")
-page = st.sidebar.radio("View", ["Overview", "Executive spend", "Review queue", "Rule studio", "Data quality",
-                                 "Alerts & agents"])
+st.sidebar.caption("Dev harness · in Fabric this is Power BI + translytical task flows")
+page = st.sidebar.radio("View", ["Overview", "Pattern queue", "Golden records", "Rule studio", "Rule library",
+                                 "Executive spend", "Alerts & agents"])
+reviewer = st.sidebar.text_input("Steward", value="steward")
 try:
     health = requests.get(f"{API}/health", timeout=5).json()
     st.sidebar.success(f"API up · LLM: {health['llm']}")
@@ -53,27 +58,26 @@ latest = runs.sort_values("run_at").iloc[-1] if not runs.empty else None
 if page == "Overview":
     st.title("Overview")
     if latest is None:
-        st.info("No pipeline run yet. The API bootstraps one on first start; or press Run pipeline.")
+        st.info("No run yet. The API bootstraps one on first start, or press Run pipeline.")
     else:
         c = st.columns(5)
-        c[0].metric("DQ score Silver → Gold", pct(latest["dq_score_after"]),
-                    f"from {pct(latest['dq_score_before'])}")
-        c[1].metric("Golden vendors", f"{int(latest['golden_vendors']):,}",
-                    f"from {int(latest['silver_vendor_records']):,} records", delta_color="off")
-        c[2].metric("Pairs awaiting review", int(latest["review_queue"]))
-        c[3].metric("Quarantined invoices", f"{int(latest['quarantined_invoices']):,}")
-        c[4].metric("Alerts last run", latest["alerts"] or "none")
-        if "match_precision" in latest and pd.notna(latest.get("match_precision")):
-            st.caption(f"Against seeded ground truth: match precision {pct(latest['match_precision'])}, "
-                       f"recall {pct(latest['match_recall'])}, defect catch rate {pct(latest['catch_rate'])}, "
-                       f"false quarantine {pct(latest['false_quarantine_rate'])}. LLM: {latest['llm']}.")
+        c[0].metric("DQ score Silver → Gold", pct(latest["dq_score_after"]), f"from {pct(latest['dq_score_before'])}")
+        c[1].metric("Open issues", f"{int(latest['issue_records']):,}",
+                    f"in {int(latest['open_patterns'])} patterns", delta_color="off")
+        c[2].metric("Records repaired", f"{int(latest['records_fixed']):,}")
+        c[3].metric("Golden vendors", f"{int(latest['golden_vendors']):,}",
+                    f"{int(latest['suspect_golden_records'])} suspect", delta_color="inverse")
+        c[4].metric("Rule library", f"v{int(latest['library_version'])}",
+                    f"{int(latest['llm_calls'])} LLM calls this run", delta_color="off")
+        if pd.notna(latest.get("match_precision")):
+            st.caption(f"Against seeded ground truth: match precision {pct(latest['match_precision'])}, recall "
+                       f"{pct(latest['match_recall'])}, defect catch rate {pct(latest['catch_rate'])}.")
     b = st.columns(3)
     if b[0].button("▶ Run pipeline", type="primary"):
-        with st.spinner("Agents running: Profiler → Quality → Matcher → Gatekeeper → Sentinel"):
+        with st.spinner("Ingest → learn → Silver → Quality → Matcher → Gatekeeper → Steward → Sentinel"):
             res = call("POST", "/runs")
         if res:
             st.success(f"Run {res['summary']['run_id']} finished in {res['summary']['seconds']}s")
-            st.json(res["agents"], expanded=False)
     if b[1].button("Inject bad batch (demo)"):
         if call("POST", "/demo/bad-batch"):
             st.warning("3,000 broken ERP_A invoices staged. Run the pipeline to see the Sentinel react.")
@@ -82,131 +86,119 @@ if page == "Overview":
     if not runs.empty:
         st.subheader("Run history")
         st.dataframe(runs.sort_values("run_at", ascending=False)[
-            ["run_at", "llm", "golden_vendors", "review_queue", "quarantined_invoices", "dq_score_before",
-             "dq_score_after", "alerts"]], hide_index=True, width="stretch")
+            ["run_at", "library_version", "llm_calls", "issue_records", "open_patterns", "records_fixed",
+             "golden_vendors", "dq_score_after", "alerts"]], hide_index=True, width="stretch")
 
-elif page == "Executive spend":
-    st.title("Executive spend")
-    st.caption("Certified view: reads only Gold tables (golden vendors + invoices that passed every rule).")
-    spend, vendors, xref = table("gold_spend_fact"), table("gold_vendor"), table("gold_vendor_xref")
-    if spend.empty:
-        st.info("No Gold data yet.")
+elif page == "Pattern queue":
+    st.title("Pattern queue")
+    pats = table("steward_patterns")
+    if pats.empty:
+        st.success("No open patterns.")
     else:
-        spend = spend.merge(vendors[["master_key", "vendor_name", "country_iso2", "member_count"]], on="master_key")
-        c = st.columns(4)
-        c[0].metric("Total spend (USD)", f"${spend['amount_usd'].sum() / 1e6:,.1f}M")
-        c[1].metric("Invoices", f"{len(spend):,}")
-        c[2].metric("Active vendors", f"{spend['master_key'].nunique():,}")
-        c[3].metric("Vendors in 2+ ERPs", f"{int((vendors['member_count'] > 1).sum()):,}")
-        left, right = st.columns(2)
-        top = spend.groupby("vendor_name")["amount_usd"].sum().nlargest(10).sort_values()
-        left.subheader("Top 10 vendors")
-        left.bar_chart(top, horizontal=True)
-        right.subheader("Spend by country")
-        right.bar_chart(spend.groupby("country_iso2")["amount_usd"].sum())
-        st.subheader("Spend by month")
-        months = pd.to_datetime(spend["invoice_date"]).dt.to_period("M").astype(str)
-        st.line_chart(spend.groupby(months)["amount_usd"].sum())
-        st.subheader("Before and after harmonization")
-        frag = xref.groupby("master_key").size().rename("source_ids")
-        split = vendors.set_index("master_key").join(frag).query("source_ids > 1")
-        st.write(f"**{len(split):,}** real vendors were recorded under **{int(split['source_ids'].sum()):,}** "
-                 "different ERP vendor IDs. Without harmonization their spend is split across those IDs.")
-        st.dataframe(split.sort_values("source_ids", ascending=False)[
-            ["vendor_name", "source_systems", "source_ids", "country_iso2"]].head(20), width="stretch")
+        st.caption(f"{int(pats['affected_records'].sum()):,} affected records in {len(pats)} root-cause patterns. "
+                   "One decision applies to every record in the pattern, now and on future loads.")
+        for p in pats.head(25).itertuples():
+            with st.expander(f"{p.affected_records:,} records · {p.kind} · {p.title}"):
+                st.write(f"**Evidence:** {p.evidence}  ·  proposed by **{p.proposed_by}**, confidence {p.confidence}")
+                canonical = None
+                if p.needs_input:
+                    canonical = st.selectbox("Canonical value", json.loads(p.options or "[]"), key=f"c{p.pattern_id}")
+                c = st.columns(2)
+                if c[0].button("✅ Approve for all", key=f"a{p.pattern_id}", type="primary"):
+                    res = call("POST", f"/patterns/{p.pattern_id}/decision",
+                               json={"decision": "approve", "reviewer": reviewer, "canonical": canonical})
+                    if res:
+                        st.success(f"Library v{res['library_version']}: {res['item_id']} "
+                                   f"({res['affected_records']:,} records, applies from the next run)")
+                if c[1].button("Reject", key=f"r{p.pattern_id}"):
+                    call("POST", f"/patterns/{p.pattern_id}/decision", json={"decision": "reject", "reviewer": reviewer})
 
-elif page == "Review queue":
-    st.title("Steward review queue")
-    queue = table("review_queue")
-    if queue.empty:
-        st.success("Nothing to review.")
-    else:
-        queue = queue.sort_values("score", ascending=False).reset_index(drop=True)
-        st.caption(f"{len(queue)} pairs in the MEDIUM band. Each decision is saved as a training label.")
-        labels = [f"{r.left_name}  ↔  {r.right_name}  ({r.score:.2f})" for r in queue.itertuples()]
-        i = st.selectbox("Pair", range(len(queue)), format_func=lambda k: labels[k])
-        pair = queue.iloc[i]
-        st.write(f"**Evidence:** {pair['explanation']}")
-        reviewer = st.text_input("Reviewer", value=st.session_state.get("reviewer", "steward"))
-        st.session_state["reviewer"] = reviewer
-        cols = st.columns(4)
-        if cols[0].button("Ask the steward assistant"):
-            rec = call("POST", "/review/recommend", json={"left_key": pair["left_key"], "right_key": pair["right_key"]})
-            if rec:
-                st.session_state["rec"] = {**rec, "pair": (pair["left_key"], pair["right_key"])}
-        rec = st.session_state.get("rec")
-        if rec and tuple(rec["pair"]) == (pair["left_key"], pair["right_key"]):
-            st.info(f"**Recommendation: {rec['recommendation']}** — {rec['rationale']}\n\n"
-                    f"Check: {rec['what_to_check']}" + ("" if rec["used_llm"] else "  _(rules-only assistant)_"))
-            st.dataframe(pd.DataFrame({"A": rec["left"], "B": rec["right"]}).astype(str), width="stretch")
-        body = {"left_key": pair["left_key"], "right_key": pair["right_key"], "reviewer": reviewer}
-        if cols[1].button("✅ Same vendor", type="primary"):
-            if call("POST", "/review/decisions", json={**body, "decision": "match"}):
-                st.session_state.pop("rec", None)
-                st.success("Saved. It merges on the next run.")
-        if cols[2].button("❌ Different vendors"):
-            if call("POST", "/review/decisions", json={**body, "decision": "no_match"}):
-                st.session_state.pop("rec", None)
-                st.success("Saved.")
-    st.divider()
-    decisions = table("steward_decisions")
-    st.write(f"Steward decisions recorded: **{len(decisions)}**")
-    if st.button("Train matcher on decisions (MLflow)"):
-        res = call("POST", "/learning/train")
-        if res:
-            (st.success if res.get("ok") else st.warning)(res)
+elif page == "Golden records":
+    st.title("Golden records")
+    alerts = table("gold_cluster_alerts")
+    st.subheader(f"Suspect golden records ({len(alerts)})")
+    if not alerts.empty:
+        st.dataframe(alerts, hide_index=True, width="stretch")
+    key = st.text_input("Master key", value=alerts.iloc[0]["master_key"] if not alerts.empty else "GRV-000001")
+    if st.button("Explain"):
+        st.session_state["explain"] = call("GET", f"/golden/{key}")
+    ex = st.session_state.get("explain")
+    if ex:
+        st.write(f"**{ex['master_key']}** has {len(ex['members'])} members. Suspect: {ex['suspect'] or 'no'}")
+        st.dataframe(pd.DataFrame(ex["merges"]), hide_index=True, width="stretch")
+        rec = st.selectbox("Detach member", ex["members"])
+        if st.button("Unmerge (adds a versioned cannot-link)"):
+            res = call("POST", "/golden/unmerge", json={"record_key": rec, "reviewer": reviewer})
+            if res:
+                st.success(f"Library v{res['library_version']}: {res['cannot_links']} cannot-links; next run separates them")
 
 elif page == "Rule studio":
     st.title("Rule studio")
-    st.caption("Describe a rule in plain English. The Profiler agent drafts it, checks it against real columns, "
-               "and dry-runs it on Silver before you accept it.")
-    text = st.text_input("Rule", "Vendor email must not be empty")
-    c = st.columns(2)
-    if c[0].button("Draft and dry-run"):
-        st.session_state["draft"] = call("POST", "/rules/draft", json={"text": text, "accept": False})
-    draft = st.session_state.get("draft")
-    if draft:
-        if draft.get("ok"):
-            st.json(draft["rule"])
-            st.write(f"Dry run: **{draft['dry_run']['failed']:,}** of {draft['dry_run']['evaluated']:,} records "
-                     f"would fail. Sample: {', '.join(draft['sample_failures'])}")
-            if c[1].button("Accept rule"):
-                res = call("POST", "/rules/draft", json={"text": text, "accept": True})
-                if res and res.get("ok"):
-                    st.success(f"Rule {res['rule']['id']} saved. It runs from the next pipeline run.")
-                    st.session_state.pop("draft", None)
-        else:
-            st.error(draft.get("error"))
-    custom = table("dq_rules_custom")
-    if not custom.empty:
-        st.subheader("Steward-approved rules")
-        st.dataframe(custom, hide_index=True, width="stretch")
-
-elif page == "Data quality":
-    st.title("Data quality")
+    st.caption("Plain English → validated rule → impact preview. Rules failing more than 5% of a table are blocked; "
+               "accepted rules start in shadow mode (flag, don't quarantine) until promoted.")
+    text = st.text_input("Rule", "Invoice amount must not exceed 1,000,000")
+    if st.button("Preview impact"):
+        st.session_state["draft"] = call("POST", "/rules/draft", json={"text": text})
+    d = st.session_state.get("draft")
+    if d and d.get("ok"):
+        pv = d["preview"]
+        (st.error if d["blocked"] else st.info)(d["message"])
+        st.json(d["rule"])
+        st.write(f"Would fail **{pv['failed']:,}** of {pv['evaluated']:,} ({pv['fail_rate']:.1%}) · by source: {pv['by_source']}")
+        override = st.checkbox("Override the blast-radius limit", disabled=not d["blocked"])
+        if st.button("Accept in shadow mode"):
+            res = call("POST", "/rules/draft", json={"text": text, "accept": True, "override": override,
+                                                     "reviewer": reviewer})
+            if res and res.get("saved"):
+                st.success(f"Rule {res['rule']['id']} added to library v{res['library_version']} in shadow mode")
+    elif d:
+        st.error(d.get("error"))
     card = table("dq_scorecard")
-    if not card.empty:
-        st.subheader("Scorecard (mirrors the Purview data-quality rules)")
-        st.dataframe(card, hide_index=True, width="stretch")
-        st.bar_chart(card.set_index("rule_id")["pass_rate"])
-    q = table("quarantine_invoice")
-    if not q.empty:
-        st.subheader(f"Quarantined invoices ({len(q):,})")
-        st.dataframe(q.head(200), hide_index=True, width="stretch")
-    prof = table("dq_profile")
-    if not prof.empty:
-        st.subheader("Profile (Profiler agent)")
-        st.dataframe(prof.drop(columns=["run_id"]), hide_index=True, width="stretch")
+    shadow = card[card.get("mode", pd.Series(dtype=str)) == "shadow"] if not card.empty else card
+    for r in shadow.itertuples():
+        if st.button(f"Promote {r.rule_id} to enforce (would quarantine {r.failed:,})"):
+            call("POST", f"/rules/{r.rule_id}/promote", json={"reviewer": reviewer})
+
+elif page == "Rule library":
+    st.title("Rule library")
+    hist = table("rule_library")
+    if hist.empty:
+        st.info("Empty: approvals and auto-approved mappings appear here, versioned.")
+    else:
+        st.caption(f"Version {int(hist['library_version'].max())} · {hist['item_id'].nunique()} items. "
+                   "Append-only: retiring an item adds a new version.")
+        st.dataframe(hist.sort_values("library_version", ascending=False), hide_index=True, width="stretch")
+        item = st.selectbox("Retire item", sorted(hist["item_id"].unique()))
+        if st.button("Retire"):
+            res = call("POST", f"/library/{item}/retire", json={"reviewer": reviewer})
+            if res:
+                st.success(f"Retired in library v{res['library_version']}")
+
+elif page == "Executive spend":
+    st.title("Executive spend")
+    st.caption("Reads only Gold: golden vendors and invoices that passed every enforced rule.")
+    spend, vendors = table("gold_spend_fact"), table("gold_vendor")
+    if spend.empty:
+        st.info("No Gold data yet.")
+    else:
+        spend = spend.merge(vendors[["master_key", "vendor_name", "country_iso2"]], on="master_key")
+        c = st.columns(3)
+        c[0].metric("Total spend (USD)", f"${spend['amount_usd'].sum() / 1e6:,.1f}M")
+        c[1].metric("Invoices", f"{len(spend):,}")
+        c[2].metric("Vendors in 2+ ERPs", f"{int((vendors['member_count'] > 1).sum()):,}")
+        st.bar_chart(spend.groupby("vendor_name")["amount_usd"].sum().nlargest(10).sort_values(), horizontal=True)
+        st.line_chart(spend.groupby(pd.to_datetime(spend["invoice_date"]).dt.to_period("M").astype(str))["amount_usd"].sum())
 
 else:
-    st.title("Alerts & agent activity")
+    st.title("Alerts & agents")
     alerts = table("alerts")
-    if alerts.empty:
-        st.success("No alerts raised.")
-    else:
-        st.dataframe(alerts.sort_values("raised_at", ascending=False), hide_index=True, width="stretch")
+    st.dataframe(alerts.sort_values("raised_at", ascending=False) if not alerts.empty else alerts,
+                 hide_index=True, width="stretch")
+    scores = table("dq_source_score_history")
+    if not scores.empty:
+        st.subheader("Quality score per source (Activator watches this)")
+        st.line_chart(scores.pivot_table(index="scored_at", columns="source_system", values="dq_score"))
     events = table("agent_events")
     if not events.empty:
         st.subheader("Agent audit trail")
-        st.dataframe(events.sort_values("logged_at", ascending=False).head(100), hide_index=True,
-                     width="stretch")
+        st.dataframe(events.sort_values("logged_at", ascending=False).head(100), hide_index=True, width="stretch")

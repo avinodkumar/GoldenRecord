@@ -2,16 +2,16 @@
 
 | Time | Moment | Show | Say |
 |---|---|---|---|
-| 0:00 | Ingest | Pipeline run; three Bronze tables | "Three ERPs, 52,000 records, each in its own format." |
-| 1:00 | Match | `silver_match_pairs` filtered to AI-reviewed pairs | "Every pair gets a decision, a confidence band and a reason." |
-| 2:00 | Review | `rpt_steward_review`: approve one MEDIUM pair | "Uncertain cases go to a person, and each decision becomes a training label." |
-| 3:00 | Alert | Drop the bad batch; Activator message in Teams | "A broken batch is caught before anyone reads a report." |
-| 4:00 | Report | Executive spend report, before/after page | "Same spend, now attributed to the real vendors, from certified Gold data only." |
+| 0:00 | Fabric finds it | MLV lineage view: rows dropped per constraint | "Native Fabric detects: 12,164 bad invoices dropped. But no reasons, no fixes." |
+| 1:00 | We explain it | `rpt_steward` pattern queue: 14,006 issues in 61 patterns | "Same rows, quarantined with reasons, grouped by root cause." |
+| 2:00 | One click | Approve "ERP_B blank currency, 320 invoices"; rerun; `fixed_by` lineage | "One decision, 320 records, and every future one. Versioned." |
+| 3:00 | Break it | A judge types a bad rule: blocked at 5%; unmerge a flagged false merge | "AI proposes once, rules decide, and everything is reversible." |
+| 4:00 | Money | Certified spend; Activator alert from the staged bad batch | "99.1% of Gold spend on the right vendor. Zero AI calls on the rerun." |
 
 ## Preparation checklist
 
-- [ ] Pipeline pre-run so Gold is populated; bad batch staged in `Files/landing_demo/`
-- [ ] One MEDIUM pair chosen in advance with a clear explanation
-- [ ] Teams channel open on a second screen
-- [ ] Deliverables slide numbers filled from the latest run
-- [ ] Backup video recorded (Day 14)
+- [ ] Pipeline pre-run; bad batch staged in `Files/landing_demo/`
+- [ ] A suspect golden record prepared for the unmerge moment
+- [ ] Ablation numbers on the Measured slide refreshed from the latest run
+- [ ] Teams channel open for the Activator alert
+- [ ] Backup: dev harness running the same agents (`docker compose up`)

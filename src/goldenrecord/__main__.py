@@ -24,12 +24,19 @@ def main(argv=None) -> None:
     review.add_argument("--limit", type=int, default=None)
 
     sub.add_parser("all", help="generate, run, simulate review, run again")
+    abl = sub.add_parser("ablation", help="native constraints vs GoldenRecord on one seeded dataset")
+    abl.add_argument("--workdir", default="data/ablation")
 
     args = parser.parse_args(argv)
     if args.command == "generate":
         print(json.dumps(synth.generate(args.vendors, args.invoices, args.seed), indent=2))
     elif args.command == "run":
         print(json.dumps(pipeline.run(args.as_of), indent=2, default=str))
+    elif args.command == "ablation":
+        from .ablation import run_ablation
+        result = run_ablation(args.workdir)
+        print(json.dumps(result["meta"], indent=2))
+        print(result["table"].T.to_string())
     elif args.command == "review":
         print(f"labelled {pipeline.simulate_review(args.limit)} pairs")
     else:

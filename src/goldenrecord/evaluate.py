@@ -23,11 +23,14 @@ def pairwise_match_metrics(xref: pd.DataFrame, truth: pd.DataFrame) -> dict:
     }
 
 
-def rule_catch_metrics(flags: pd.DataFrame, defects: pd.DataFrame, invoices: pd.DataFrame) -> dict:
-    """Catch rate of seeded rule/anomaly defects and false-quarantine rate on clean invoices."""
+def rule_catch_metrics(flags: pd.DataFrame, defects: pd.DataFrame, invoices: pd.DataFrame,
+                       fixed_keys: set[str] | None = None) -> dict:
+    """Catch rate of seeded rule/anomaly defects (flagged, or repaired by an approved fix) and the
+    false-quarantine rate on clean invoices."""
+    fixed_keys = fixed_keys or set()
     expected = defects[defects["expected_rule"].notna()][["record_key", "expected_rule", "defect_type"]]
     flagged = set(zip(flags["record_key"], flags["rule_id"]))
-    expected = expected.assign(caught=[(k, r) in flagged for k, r in
+    expected = expected.assign(caught=[(k, r) in flagged or k in fixed_keys for k, r in
                                        zip(expected["record_key"], expected["expected_rule"])])
     by_type = expected.groupby("defect_type")["caught"].mean().round(4).to_dict()
 

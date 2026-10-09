@@ -1,4 +1,10 @@
-# Microsoft Purview: data quality and protection
+# Microsoft Purview (optional governance layer)
+
+> GoldenRecord does not depend on Purview. Detection runs in materialized-lake-view constraints generated
+> from the same rule catalog, and PII protection is tokenization plus OneLake security
+> (`fabric/sql/onelake_security.md`). Purview data quality needs an account in the data's region and is
+> billed separately, so we treat it as an add-on: where the tenant has it, configure the steps below
+> with the same rule IDs to get the governance scorecard, labels and lineage.
 
 Deliverables 4 and 5. The rule catalog lives in [`config/dq_rules.yaml`](../config/dq_rules.yaml); the
 same rules run locally in `goldenrecord.rules`, so we can test them before configuring Purview.

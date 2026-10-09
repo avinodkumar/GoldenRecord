@@ -1,10 +1,10 @@
-"""Pluggable LLM client for the agents (a stand-in for Fabric AI Functions).
+"""LLM client interface for the agents.
 
-LLM_PROVIDER selects the backend:
-  none          no LLM; agents use their deterministic fallbacks (default, works offline)
-  anthropic     Claude via the Anthropic SDK (ANTHROPIC_API_KEY)
-  azure_openai  Azure OpenAI deployment (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT)
-  ollama        local model through Ollama's OpenAI-compatible endpoint (OLLAMA_BASE_URL, OLLAMA_MODEL)
+In the solution the LLM is Fabric AI Functions (fabric_runtime.FabricAIFunctionsLLM): no keys, no
+external endpoint. Outside Fabric, the offline dev harness picks a backend with LLM_PROVIDER:
+  none          no LLM; agents use their deterministic fallbacks (default)
+  azure_openai  Azure OpenAI deployment, the same model family Fabric AI Functions use
+                (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT)
 
 Every call returns parsed JSON that matches the given JSON schema, or None on any failure, so a
 broken or missing LLM degrades the agents to rules-only instead of stopping the pipeline.
@@ -52,54 +52,20 @@ class LLMClient:
         raise NotImplementedError
 
 
-class AnthropicLLM(LLMClient):
-    provider = "anthropic"
+class AzureOpenAILLM(LLMClient):
+    """Dev-harness backend: Azure OpenAI chat completions with a strict JSON schema."""
+    provider = "azure_openai"
 
     def __init__(self):
         super().__init__()
-        import anthropic
+        from openai import AzureOpenAI
 
-        self.client = anthropic.Anthropic()
-        self.model = os.environ.get("LLM_MODEL", "claude-opus-5-5")
-
-    def _complete_json(self, system, prompt, schema):
-        response = self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
-            # Server-side fallback: if the model declines, the API retries on a fallback model.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
+        self.client = AzureOpenAI(
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
         )
-        if response.stop_reason == "refusal":
-            return None
-        text = next((b.text for b in response.content if b.type == "text"), None)
-        return json.loads(text) if text else None
-
-
-class OpenAICompatibleLLM(LLMClient):
-    """Azure OpenAI or Ollama, both through the openai SDK's chat completions API."""
-
-    def __init__(self, provider: str):
-        super().__init__()
-        self.provider = provider
-        if provider == "azure_openai":
-            from openai import AzureOpenAI
-
-            self.client = AzureOpenAI(
-                azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-                api_key=os.environ["AZURE_OPENAI_API_KEY"],
-                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
-            )
-            self.model = os.environ["AZURE_OPENAI_DEPLOYMENT"]
-        else:
-            from openai import OpenAI
-
-            self.client = OpenAI(base_url=os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434/v1"),
-                                 api_key="ollama")
-            self.model = os.environ.get("OLLAMA_MODEL", "llama3.2")
+        self.model = os.environ["AZURE_OPENAI_DEPLOYMENT"]
 
     def _complete_json(self, system, prompt, schema):
         response = self.client.chat.completions.create(
@@ -117,10 +83,8 @@ def get_llm() -> LLMClient | None:
     if provider in ("", "none"):
         return None
     try:
-        if provider == "anthropic":
-            return AnthropicLLM()
-        if provider in ("azure_openai", "ollama"):
-            return OpenAICompatibleLLM(provider)
+        if provider == "azure_openai":
+            return AzureOpenAILLM()
     except Exception as exc:
         log.warning("LLM provider %s unavailable, running rules-only: %s", provider, exc)
         return None

@@ -6,7 +6,9 @@ from datetime import datetime
 
 import pandas as pd
 
-from .reference import CITY_ALIASES, LEGAL_TOKENS, NAME_ABBREVIATIONS, country_to_iso2
+from .mappings import DROP, Mappings, name_tokens
+from .privacy import protect_vendor_pii
+from .reference import country_to_iso2
 
 SOURCE_SCHEMAS = {
     "ERP_A": {
@@ -44,14 +46,11 @@ def _blank_to_none(value):
     return s or None
 
 
-def normalize_name(name: str | None) -> str | None:
-    """Uppercase, drop punctuation and legal-form tokens, expand abbreviations."""
-    if not isinstance(name, str) or not name:
-        return None
-    s = name.upper().replace(".", "")
-    s = re.sub(r"[^A-Z0-9 ]", " ", s)
-    tokens = [NAME_ABBREVIATIONS.get(t, t) for t in s.split()]
-    tokens = [t for t in tokens if t not in LEGAL_TOKENS]
+def normalize_name(name: str | None, token_map: dict[str, str] | None = None) -> str | None:
+    """Uppercase, drop punctuation and legal-form tokens, then apply token mappings (abbreviations, typos)."""
+    token_map = Mappings.reference().name_token if token_map is None else token_map
+    tokens = [token_map.get(t, t) for t in name_tokens(name)]
+    tokens = [t for t in tokens if t != DROP]
     return " ".join(tokens) or None
 
 
@@ -72,11 +71,12 @@ def clean_phone(value: str | None) -> str | None:
     return f"+{digits}" if len(digits) >= 8 else None
 
 
-def clean_city(value: str | None) -> str | None:
+def clean_city(value: str | None, aliases: dict[str, str] | None = None) -> str | None:
     value = _blank_to_none(value)
     if value is None:
         return None
-    return CITY_ALIASES.get(value.upper(), value.title())
+    aliases = Mappings.reference().city if aliases is None else aliases
+    return aliases.get(value.upper(), value.title())
 
 
 def email_domain(email: str | None) -> str | None:
@@ -105,29 +105,38 @@ def parse_amount(value: str | None) -> float | None:
         return None
 
 
-def standardize_vendors(raw: pd.DataFrame, source: str) -> pd.DataFrame:
-    df = raw.rename(columns=SOURCE_SCHEMAS[source]["vendors"]).copy()
+def standardize_vendors(raw: pd.DataFrame, source: str, mappings: Mappings | None = None) -> pd.DataFrame:
+    """Canonical vendor rows. `mappings` holds the learned value mappings; default is the curated reference."""
+    mappings = mappings or Mappings.reference()
+    if "pii_phone_token" not in raw.columns:  # not yet protected (lightweight CSV path): protect now
+        raw, _ = protect_vendor_pii(raw, source)
+    tokens = raw[["pii_phone_token", "pii_email_token", "pii_bank_token"]].reset_index(drop=True)
+    df = raw.drop(columns=list(tokens.columns)).rename(columns=SOURCE_SCHEMAS[source]["vendors"]).reset_index(drop=True)
     df = df.map(_blank_to_none)
     out = pd.DataFrame({
         "record_key": source + ":" + df["source_vendor_id"],
         "source_system": source,
         "source_vendor_id": df["source_vendor_id"],
         "vendor_name": df["vendor_name"].map(lambda v: " ".join(v.split()) if isinstance(v, str) else None),
-        "vendor_name_norm": df["vendor_name"].map(normalize_name),
+        "vendor_name_norm": df["vendor_name"].map(lambda n: normalize_name(n, mappings.name_token)),
         "street": df["street"],
-        "city": df["city_raw"].map(clean_city),
+        "city": df["city_raw"].map(lambda c: clean_city(c, mappings.city)),
         "country_raw": df["country_raw"],
         "country_iso2": df["country_raw"].map(country_to_iso2),
         "tax_id": df["tax_id_raw"].map(clean_tax_id),
-        "phone": df["phone_raw"].map(clean_phone),
+        # PII arrives masked from ingestion; tokens are what matching compares.
+        "phone": df["phone_raw"],
+        "phone_token": tokens["pii_phone_token"],
         "email": df["email_raw"].map(lambda v: v.lower() if isinstance(v, str) else None),
+        "email_token": tokens["pii_email_token"],
         "bank_account": df["bank_account"],
+        "bank_token": tokens["pii_bank_token"],
     })
     out["email_domain"] = out["email"].map(email_domain)
     return out
 
 
-def standardize_invoices(raw: pd.DataFrame, source: str) -> pd.DataFrame:
+def standardize_invoices(raw: pd.DataFrame, source: str, mappings: Mappings | None = None) -> pd.DataFrame:
     schema = SOURCE_SCHEMAS[source]
     df = raw.rename(columns=schema["invoices"]).copy()
     df = df.map(_blank_to_none)
@@ -141,5 +150,8 @@ def standardize_invoices(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         "invoice_date_raw": df["invoice_date_raw"],
         "invoice_date": df["invoice_date_raw"].map(lambda v: parse_date(v, fmt)),
         "amount": df["amount_raw"].map(parse_amount),
-        "currency": df["currency_raw"].map(lambda v: v.upper() if isinstance(v, str) else None),
+        "currency_raw": df["currency_raw"],
+        "currency": df["currency_raw"].map(
+            lambda v: (mappings or Mappings.reference()).currency.get(v.strip().upper(), v.strip().upper())
+            if isinstance(v, str) else None),
     })

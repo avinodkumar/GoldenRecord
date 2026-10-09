@@ -5,7 +5,7 @@
 Nine rules in [`config/dq_rules.yaml`](../config/dq_rules.yaml) plus anomaly check **A01** (invoice amount
 > 20× the vendor's median, with at least 3 invoices of history). Invoices failing R05–R09 or A01 are
 quarantined with their reasons; vendor failures are recorded and invalid values are ignored by
-survivorship. Purview configuration: [`purview/README.md`](../purview/README.md).
+survivorship. In Fabric the same rules are generated as materialized-lake-view constraints (`fabric_sql.py`); Purview is optional.
 
 ## Matching pipeline
 
@@ -28,9 +28,12 @@ survivorship. Purview configuration: [`purview/README.md`](../purview/README.md)
    [ADR 0002](adr/0002-confidence-bands-and-guardrail.md).
 6. **Clustering.** Union-find over merged pairs → golden records.
 7. **Learning loop.** Steward decisions are stored in `steward_decisions`, merged on the next run, and
-   used by `nb_05` to train a classifier tracked in MLflow.
+   used by `nb_06` to train a classifier tracked in MLflow. Pattern decisions become versioned library items (ADR 0007).
 
-## Baseline results (local, synthetic data, seed 42)
+## Baseline results (first local version, 2026-09-30)
+
+> Superseded by the measured comparison in [00-positioning.md](00-positioning.md), which reflects the
+> rule library, pattern queue and PII protection.
 
 From `python -m goldenrecord all` on 2026-09-30 (5,600 vendor records, 46,850 invoices):
 

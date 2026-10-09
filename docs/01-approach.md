@@ -17,10 +17,10 @@ band, and only governed Gold data feeds a certified spend report.
    automatically only when the deterministic rules still agree.
 2. **Measured, not claimed.** We generate the data ourselves with seeded defects and ground truth, so
    every metric (catch rate, match precision/recall, DQ score) is computed, not estimated.
-3. **Humans own the uncertain cases.** Medium-band pairs go to a steward; each decision becomes a
-   training label.
-4. **Governed by default.** Gold is the only layer the semantic model can read; labels, DLP and
-   DSPM for AI protect sensitive vendor data.
+3. **Humans own the uncertain cases, by root cause.** Issues are grouped into patterns; one steward decision
+   becomes a versioned rule for every matching record (ADR 0007).
+4. **Governed by default.** PII is tokenized from Bronze and raw values sit in a OneLake-security vault;
+   Gold is the only layer the semantic model can read. Purview labels are added where available.
 5. **Local core, Fabric shell.** Business logic lives in one tested Python package; notebooks are thin
    wrappers (see [ADR 0001](adr/0001-fabric-native-with-local-core.md)).
 
@@ -28,12 +28,14 @@ band, and only governed Gold data feeds a certified spend report.
 
 | # | Deliverable | Where it lives |
 |---|---|---|
-| 1 | Bronze/Silver/Gold, golden record, survivorship, stable master key | `nb_01`, `nb_02`, `nb_04`; `standardize.py`, `survivorship.py` |
-| 2 | LLM classification and matching: decision, confidence band, explanation | `nb_03_ai_match`; `matching.py` |
-| 3 | Human review queue in Power BI with write-back; labels persisted | `powerbi/README.md`; `steward_decisions`; `nb_05` |
-| 4 | 5+ active Purview DQ rules, scorecard, Activator alerts | `config/dq_rules.yaml`; `purview/README.md`; `activator/README.md` |
-| 5 | Sensitivity labels; DSPM for AI screenshot | `purview/README.md` §3 |
-| 6 | Certified semantic model and executive spend report on Gold only | `powerbi/README.md` |
+| 1 | Bronze/Silver/Gold, golden record, survivorship, stable master key | `nb_01`–`nb_04`; MLVs from `fabric_sql.py`; `survivorship.py` |
+| 2 | LLM classification and matching: decision, confidence band, explanation | `nb_02` (mappings once per pattern), `nb_04` (grey-zone pairs); AI Functions |
+| 3 | Human review queue in Power BI with write-back; decisions persisted | Pattern queue + translytical task flows (`fabric/functions`), versioned `rule_library` |
+| 4 | 5+ DQ rules, scorecard, anomaly alerts | 9 MLV constraints + quarantine view; Isolation Forest; Activator; Purview optional |
+| 5 | Sensitivity protection | Tokenization at ingestion, OneLake security (`fabric/sql/onelake_security.md`); Purview labels if available |
+| 6 | Certified semantic model and executive spend report on Gold only | `gold_spend_certified`; `powerbi/README.md` |
+
+See [00-positioning.md](00-positioning.md) for what is native Fabric and what GoldenRecord adds.
 
 ## Scope
 

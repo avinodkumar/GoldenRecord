@@ -1,44 +1,39 @@
-# Power BI: certified model, spend report and review queue
+# Power BI: certified spend, trust, and the steward workspace
 
-Deliverables 3 and 6.
-
-## Semantic model `sm_goldenrecord_spend` (Direct Lake, Gold only)
+## Semantic model `sm_goldenrecord_spend` (Direct Lake, Gold only, certified)
 
 | Table | Source | Notes |
 |---|---|---|
-| `Vendor` | `gold_vendor` | Hide `bank_account`; key `master_key` |
-| `Spend` | `gold_spend_fact` | Fact; `master_key` → `Vendor`, `invoice_date` → `Date` |
-| `Date` | Generated date table | Mark as date table |
-| `DQ Scorecard` | `dq_scorecard` | Disconnected; for the trust page |
-
-Measures:
+| `Spend` | MLV `gold_spend_certified` | Valid invoices on golden vendors; `master_key` → `Vendor` |
+| `Vendor` | `gold_vendor` | Token and bank columns excluded from the model |
+| `Source score` | MLV `gold_dq_source_score` + `dq_source_score_history` | Trust page; Activator trigger |
+| `Date` | Generated | Marked as date table |
 
 ```DAX
 Total Spend USD = SUM ( Spend[amount_usd] )
-Invoice Count = COUNTROWS ( Spend )
 Active Vendors = DISTINCTCOUNT ( Spend[master_key] )
-Avg Invoice USD = DIVIDE ( [Total Spend USD], [Invoice Count] )
 Multi-ERP Vendors = CALCULATE ( COUNTROWS ( Vendor ), Vendor[member_count] > 1 )
-DQ Pass Rate = AVERAGE ( 'DQ Scorecard'[pass_rate] )
+Source DQ Score = AVERAGE ( 'Source score'[dq_score] )
 ```
-
-Certification: the workspace admin endorses the model as **Certified** (requires the tenant
-endorsement setting). The model must not reference any Bronze or Silver table.
 
 ## Report `rpt_executive_spend`
 
-1. **Executive spend**: total spend, top 10 vendors, spend by country and month, multi-ERP vendors.
-2. **Before and after**: spend by vendor when the three ERPs are added up separately versus harmonized
-   (duplicate vendors merged, quarantined invoices excluded).
-3. **Trust**: DQ pass rate by rule, quarantined invoice count, link to the Purview scorecard.
+1. **Spend:** total, top vendors, by country and month, all on golden vendors.
+2. **Before / after:** spend split across raw ERP vendor IDs versus consolidated on golden records.
+3. **Trust:** quality score per source over time (Activator alert set on this visual), quarantined
+   invoices by rule, rule-library version in use.
 
-## Report `rpt_steward_review` (write-back)
+## Report `rpt_steward` (translytical task flows)
 
-Source: `review_queue` (pairs in the MEDIUM band with their explanation).
+All actions call `udf_goldenrecord_steward` (`fabric/functions/function_app.py`) through data function
+buttons. Each records the steward's Entra identity and returns a confirmation string.
 
-Write-back uses a **translytical task flow**: a button calls a Fabric User Data Function that inserts
-`{left_key, right_key, decision, reviewer, decided_at}` into the `steward_decisions` table.
-`nb_04` merges approved pairs on the next run; `nb_05` trains on the labels.
+| Page | Data | Button → function |
+|---|---|---|
+| Pattern queue | `steward_patterns` sorted by affected records; canonical-value slicer for mapping patterns | **Approve for all** → `decide_pattern(patternId, "approve", canonical)`; **Reject** → `decide_pattern(…, "reject")` |
+| Golden records | `gold_cluster_alerts`, `gold_merge_edges`, `gold_vendor_xref` | **Unmerge** → `unmerge_record(recordKey, note)` |
+| Rule studio | Text input; `rule_previews` (impact by source, blocked flag) | **Preview** → `request_rule(text)`; **Accept in shadow** → `request_rule(text, accept=True)` |
+| Rule library | `rule_library` (versioned, append-only) | Read-only; retire via the inbox (backlog) |
 
-Fallback if task flows are unavailable in the tenant: a Power Apps visual writing to the same table.
-During local development, `python -m goldenrecord review` simulates the steward from ground truth.
+Decisions land in the Fabric SQL database inbox and are applied by `nb_05` at the start of the next
+pipeline run (or on demand), so every approval becomes a versioned library item.

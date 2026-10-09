@@ -28,3 +28,17 @@ rules:
     condition: above
     threshold: 0.40
     severity: medium
+
+  - id: AL05
+    name: Suspect golden records appeared
+    metric: suspect_golden_records
+    condition: rise_vs_previous
+    threshold: 0
+    severity: high
+
+  - id: AL06
+    name: A source's quality score dropped
+    metric: source_dq_score        # evaluated per ERP source
+    condition: drop_vs_previous
+    threshold: 0.02
+    severity: high

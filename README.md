@@ -1,75 +1,63 @@
-# GoldenRecord – AI Data Quality Gatekeeper
+# GoldenRecord
 
 **Team GoldenRecord · Hackathon Track 02: GenAI Data Harmonization & Quality Guardrails**
 
-> No bad record reaches the boardroom. Every rejected record comes with a reason, a fix and an audit trail.
+> **Fabric tells you your data is bad; GoldenRecord fixes it.** It runs Fabric notebooks with AI Functions
+> on top of materialized-lake-view constraints in OneLake, so that every bad record is quarantined with a
+> reason, repaired by rules learned once, and resolved into one golden vendor. Stewards approve fixes by
+> root cause in Power BI, through translytical task flows. Activator alerts when a source's quality drops.
 
-A Microsoft Fabric solution that harmonizes vendor and spend data from three ERPs: Bronze → Silver → Gold,
-AI matching with confidence bands and explanations, a human review loop, Purview data-quality rules,
-Activator alerts, and a certified executive spend report that reads only governed Gold data.
+## What it adds on top of Fabric
 
-## Quick start: Docker (full stack with agents)
+Native Fabric detects and scores; GoldenRecord builds only what the platform lacks
+([docs/00-positioning.md](docs/00-positioning.md)):
 
-```bash
-cp .env.example .env        # optional: pick an LLM provider; default runs rules-only
-docker compose up -d --build
-```
+1. **Quarantine with reasons.** MLV constraints drop bad rows; our quarantine view keeps them with the rules they failed.
+2. **Fixes learned once.** AI Functions author a mapping or fix once per root cause; it is validated,
+   versioned and reused deterministically. Reruns make zero AI calls.
+3. **Golden records.** Entity resolution with survivorship and stable master keys; every merge explained
+   and reversible.
+4. **Pattern-level stewardship.** 14,006 issue records become 61 root-cause patterns (58 decisions), made in Power BI with
+   translytical task flows.
 
-Open the control room at http://localhost:8501, the agent API at http://localhost:8000/docs and MLflow
-at http://localhost:5000. Six agents run the pipeline: Profiler, Quality, Matcher, Gatekeeper, Steward
-assistant and Sentinel. See [docs/08-agents-and-local-stack.md](docs/08-agents-and-local-stack.md).
+PII is tokenized and masked from Bronze onwards; raw values live only in a OneLake-security-restricted vault.
 
-Deploy to Fabric (builds the wheel, exports the notebooks, imports them with the Fabric CLI):
+## Measured (same seeded dataset, `python -m goldenrecord ablation`)
 
-```bash
-docker compose --profile deploy run --rm toolbox
-```
+| | Native constraints only | GoldenRecord + 58 pattern decisions |
+|---|---|---|
+| Bad rows with a per-row reason | none (counters only) | all |
+| Records repaired, with lineage | 0 | 1,185 |
+| Duplicate vendors merged (of 1,743) | 0 | 1,727 |
+| Gold spend on the correct vendor | split across 5,600 IDs | 99.1% |
+| LLM calls per run | 0 | 0 (vs 107,525 for LLM-on-every-row) |
 
-## Quick start: Python only (no Docker)
-
-```bash
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"
-.venv/Scripts/python -m goldenrecord all
-.venv/Scripts/python -m pytest -q
-```
-
-`all` generates the synthetic ERP extracts (about 52K records with seeded defects), runs the pipeline,
-simulates a steward reviewing the queue, runs again, and prints the metrics. Outputs land in `data/`
-(`data/reports/metrics.json` feeds the Proof slide).
-
-Individual steps: `python -m goldenrecord generate | run | review`.
-
-## Repository map
+## Repository
 
 | Path | What |
 |---|---|
-| `src/goldenrecord/` | Tested core logic: synthetic data, standardization, rules, matching, survivorship, evaluation |
-| `src/goldenrecord/agents/` | Profiler, Quality, Matcher, Gatekeeper, Steward assistant, Sentinel, orchestrator |
-| `src/goldenrecord/api.py`, `ui/app.py` | Agent API (FastAPI) and control-room UI (Streamlit) |
-| `Dockerfile`, `docker-compose.yml`, `deploy/` | Local stack, Fabric deploy toolbox |
-| `fabric/notebooks/` | Fabric notebooks nb_01–nb_05 (thin wrappers over the package + AI Functions) |
-| `config/dq_rules.yaml` | Data-quality rule catalog, mirrored in Purview |
-| `purview/`, `activator/`, `powerbi/` | Configuration guides for each Fabric and Purview item |
-| `docs/` | Approach, architecture, roadmap, data model, matching design, team, demo script, ADRs |
-| `tests/` | Unit and end-to-end smoke tests |
+| `fabric/notebooks/` | The solution: nb_01 ingest → nb_02 learn and Silver → nb_03 native detection (MLVs, SynapseML) → nb_04 resolve and remediate → nb_05 apply steward inbox → nb_06 MLflow |
+| `fabric/functions/`, `fabric/sql/` | User Data Functions for translytical task flows; SQL database inbox; OneLake security |
+| `src/goldenrecord/` | Tested logic the notebooks call: privacy, mappings, rule library, patterns, agents, MLV SQL generation |
+| `config/` | Rule catalog (drives MLV constraints, the agents and Purview) and alert rules |
+| `powerbi/`, `activator/`, `purview/` | Configuration guides (Purview optional) |
+| `docs/` | Positioning, architecture, roadmap, data model, break-it answers, ADRs |
+| `Dockerfile`, `docker-compose.yml`, `ui/` | **Offline dev harness** only ([docs/08-dev-harness.md](docs/08-dev-harness.md)) |
+| `tests/` | 24 tests, including the three break scenarios and constraint/engine parity |
+
+## Run locally (dev harness)
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -e ".[stack,dev]"
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/python -m goldenrecord ablation
+docker compose up -d --build
+```
 
 ## Documentation
 
-1. [Solution approach](docs/01-approach.md): principles and the six required deliverables
-2. [Architecture](docs/02-architecture.md): flow diagram, layers, runtime sequence
-3. [Roadmap](docs/03-roadmap.md): two-week plan, milestones, backlog, risks
-4. [Data model](docs/04-data-model.md): source mappings, Silver/Gold schemas, survivorship
-5. [Matching and quality](docs/05-matching-and-quality.md): rules, bands, AI guardrail, baseline results
-6. [Team](docs/06-team.md): roles, RACI, cadence
-7. [Demo script](docs/07-demo-script.md)
-8. [Agents and local stack](docs/08-agents-and-local-stack.md): Docker stand-ins, agents, guardrails, demo flow
-9. ADRs: [Fabric + local core](docs/adr/0001-fabric-native-with-local-core.md) ·
-   [Bands and guardrail](docs/adr/0002-confidence-bands-and-guardrail.md) ·
-   [Stable master key](docs/adr/0003-stable-master-key.md) ·
-   [Local stack stand-ins](docs/adr/0004-local-stack-stand-ins.md)
-
-## Status
-
-Milestone M0 (local core) and the local Docker stack with agents are done. Next: Fabric foundation
-(Sprint 1 stories S1-04 to S1-08 in the roadmap), then run one real LLM provider.
+[00 Positioning](docs/00-positioning.md) · [01 Approach](docs/01-approach.md) · [02 Architecture](docs/02-architecture.md) ·
+[03 Roadmap](docs/03-roadmap.md) · [04 Data model](docs/04-data-model.md) · [05 Matching and quality](docs/05-matching-and-quality.md) ·
+[06 Team](docs/06-team.md) · [07 Demo script](docs/07-demo-script.md) · [08 Dev harness](docs/08-dev-harness.md) ·
+[09 Break-it answers](docs/09-break-it-answers.md) · ADRs [0001](docs/adr/0001-fabric-native-with-local-core.md)–[0007](docs/adr/0007-pattern-queue-and-rule-library.md)

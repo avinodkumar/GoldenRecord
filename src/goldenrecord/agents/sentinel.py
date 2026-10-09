@@ -77,7 +77,19 @@ class SentinelAgent(Agent):
             "worst_rule_pass_rate": float(worst["pass_rate"]),
             "quarantine_rate": round(len(s["quarantine"]) / max(len(s["invoices"]), 1), 4),
             "dq_score_after": s["dq_after"],
+            "suspect_golden_records": len(s.get("cluster_alerts", [])),
         }
+        failing = set(s["flags"]["record_key"])
+        source_scores = (all_keys.to_frame("record_key")
+                         .assign(source_system=lambda d: d["record_key"].str.split(":").str[0],
+                                 passed=lambda d: ~d["record_key"].isin(failing))
+                         .groupby("source_system")["passed"].mean().round(4))
+        source_history = ctx.lake.read("dq_source_score_history")
+        prev_source = ({} if source_history.empty else source_history.sort_values("scored_at")
+                       .drop_duplicates("source_system", keep="last").set_index("source_system")["dq_score"].to_dict())
+        ctx.lake.append("dq_source_score_history", pd.DataFrame({
+            "source_system": source_scores.index, "dq_score": source_scores.values,
+            "run_id": ctx.run_id, "scored_at": metrics["run_at"]}))
         history = ctx.lake.read("dq_run_metrics")
         previous = history.sort_values("run_at").iloc[-1].to_dict() if not history.empty else None
         ctx.lake.append("dq_run_metrics", pd.DataFrame([metrics]))
@@ -90,9 +102,17 @@ class SentinelAgent(Agent):
             top = delta.sort_values(ascending=False).head(3)
             rule_deltas = ", ".join(f"{rid} +{int(d)}" for rid, d in top.items() if d > 0)
 
-        alerts = []
+        checks = []
         for rule in load_alert_rules():
-            fired, value = evaluate(rule, metrics, previous)
+            if rule["metric"] == "source_dq_score":  # one check per ERP source (Activator object = source)
+                for src, score in source_scores.items():
+                    fired, value = evaluate({**rule, "metric": "score"}, {"score": score},
+                                            {"score": prev_source.get(src)} if src in prev_source else None)
+                    checks.append(({**rule, "name": f"{rule['name']}: {src}"}, fired, value))
+            else:
+                checks.append((rule, *evaluate(rule, metrics, previous)))
+        alerts = []
+        for rule, fired, value in checks:
             if not fired:
                 continue
             cause = (f"Largest increases in failures: {rule_deltas}." if rule_deltas

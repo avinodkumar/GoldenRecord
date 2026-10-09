@@ -69,10 +69,11 @@ def _pass_share(keys: pd.Series, failing: set[str]) -> float:
     return round(float((~keys.isin(failing)).mean()), 4) if len(keys) else 1.0
 
 
-def build_spend(invoices: pd.DataFrame, flags: pd.DataFrame,
-                xref: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def build_spend(invoices: pd.DataFrame, flags: pd.DataFrame, xref: pd.DataFrame,
+                blocking: set[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return (gold spend fact, quarantined invoices with their failed rules)."""
-    blocked = flags[flags["rule_id"].isin(BLOCKING_INVOICE_RULES)]
+    blocking = BLOCKING_INVOICE_RULES if blocking is None else blocking
+    blocked = flags[flags["rule_id"].isin(blocking)]
     reasons = blocked.groupby("record_key")["rule_id"].agg(lambda r: ",".join(sorted(set(r))))
     quarantine = invoices[invoices["record_key"].isin(reasons.index)].assign(
         failed_rules=lambda d: d["record_key"].map(reasons))

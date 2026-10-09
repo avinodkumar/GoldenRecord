@@ -38,7 +38,7 @@ def candidate_pairs(vendors: pd.DataFrame) -> pd.DataFrame:
     """Blocking: only compare records that share a tax ID, a phone, or country + name prefix."""
     v = vendors.copy()
     v["blk_tax"] = v["tax_id"].where(v["tax_id"].map(_valid_tax))
-    v["blk_phone"] = v["phone"]
+    v["blk_phone"] = v["phone_token"] if "phone_token" in v else v["phone"]
     v["blk_name"] = v["country_iso2"].fillna("??") + "|" + v["vendor_name_norm"].fillna("").str[:4]
     pairs = set()
     for col in ("blk_tax", "blk_phone", "blk_name"):
@@ -78,7 +78,8 @@ def score_pair(left: dict, right: dict) -> dict:
     tax_eq = _valid_tax(lt) and lt == rt
     tax_conflict = _valid_tax(lt) and _valid_tax(rt) and lt != rt
     city_eq = bool(left["city"]) and left["city"] == right["city"]
-    phone_eq = bool(left["phone"]) and left["phone"] == right["phone"]
+    phone_key = "phone_token" if "phone_token" in left else "phone"  # tokens: masked phones can collide
+    phone_eq = bool(left[phone_key]) and left[phone_key] == right[phone_key]
     domain_eq = bool(left["email_domain"]) and left["email_domain"] == right["email_domain"]
 
     if tax_eq:
@@ -136,3 +137,48 @@ def cluster(record_keys, matched_pairs) -> dict[str, str]:
         if ra != rb:
             parent[max(ra, rb)] = min(ra, rb)
     return {k: find(k) for k in record_keys}
+
+
+def evidence_signature(pair: dict) -> str:
+    """Root-cause signature of a match decision: pairs with the same evidence share one review pattern."""
+    tax = "same" if pair["tax_eq"] else "conflict" if pair["tax_conflict"] else "missing"
+    name = f"{int(pair['name_similarity'] * 10) / 10:.1f}"
+    return (f"tax:{tax}|name>={name}|city:{'y' if pair['city_eq'] else 'n'}"
+            f"|phone:{'y' if pair['phone_eq'] else 'n'}|domain:{'y' if pair['domain_eq'] else 'n'}")
+
+
+def cluster_with_constraints(record_keys, edges, cannot_link=None):
+    """Union-find that never joins two records a steward has said are different companies.
+
+    edges: iterable of (left, right, reason, strength); strongest edges are applied first.
+    cannot_link: iterable of (left, right) record pairs that must stay in different golden records.
+    Returns (record -> cluster id, accepted edges, edges blocked by a cannot-link).
+    """
+    parent = {k: k for k in record_keys}
+    members = {k: {k} for k in record_keys}
+    partners: dict[str, set[str]] = {}
+    for a, b in cannot_link or []:
+        partners.setdefault(a, set()).add(b)
+        partners.setdefault(b, set()).add(a)
+
+    def find(k):
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    accepted, blocked = [], []
+    for a, b, reason, strength in sorted(edges, key=lambda e: -e[3]):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            accepted.append((a, b, reason, strength))
+            continue
+        small, large = (ra, rb) if len(members[ra]) <= len(members[rb]) else (rb, ra)
+        if any(partners.get(x, set()) & members[large] for x in members[small]):
+            blocked.append((a, b, reason, strength))
+            continue
+        root, child = min(ra, rb), max(ra, rb)
+        parent[child] = root
+        members[root] |= members.pop(child)
+        accepted.append((a, b, reason, strength))
+    return {k: find(k) for k in record_keys}, accepted, blocked
