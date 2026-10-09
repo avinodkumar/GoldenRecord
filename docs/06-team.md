@@ -2,13 +2,16 @@
 
 ## Team GoldenRecord
 
-| Role | Name | Owns |
+| Name | Role | Owns |
 |---|---|---|
-| Product owner & quality architect (PO) | Vinod Atmakur | Scope, rule catalog, rule library, governance, storyline, pitch |
-| Data engineer (DE) | [Name] | Workspace, Lakehouse, Data Factory, Bronze/Silver/Gold notebooks, pipeline |
-| AI/ML engineer (AI) | [Name] | AI Functions matching, bands, MLflow, Activator |
-| Power BI developer (BI) | [Name] | Semantic model, spend report, review write-back |
-| QA & test data (QA) | [Name, optional] | Synthetic data, tests, reconciliation, evidence pack |
+| Vinod Atmakur | Product owner & quality architect (PO) | Scope, rule catalog, rule library, governance, storyline, pitch |
+| Anand Topu | *[Role]* | *[Owns]* |
+| Yogesh Godwade | *[Role]* | *[Owns]* |
+| Koushik Das | *[Role]* | *[Owns]* |
+| Ravi Chander Kanikala | *[Role]* | *[Owns]* |
+| Dilip Divakaran | *[Role]* | *[Owns]* |
+
+Roles to assign: data engineer (DE), AI/ML engineer (AI), Power BI developer (BI), QA & test data (QA), governance & security.
 
 ## RACI for the six deliverables
 

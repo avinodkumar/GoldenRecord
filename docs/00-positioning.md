@@ -92,7 +92,8 @@ reversible, and stewards work on root causes, not rows.
 | Member | Role | Relevant experience (one line) |
 |---|---|---|
 | Vinod Atmakur | Product owner & quality architect | 20+ years in delivery and quality architecture across payments, fintech and healthcare *(confirm)* |
-| *[Name]* | Data engineer | *[one line]* |
-| *[Name]* | AI/ML engineer | *[one line]* |
-| *[Name]* | Power BI developer | *[one line]* |
-| *[Name]* | QA & test data | *[one line]* |
+| Anand Topu | *[Role]* | *[one line]* |
+| Yogesh Godwade | *[Role]* | *[one line]* |
+| Koushik Das | *[Role]* | *[one line]* |
+| Ravi Chander Kanikala | *[Role]* | *[one line]* |
+| Dilip Divakaran | *[Role]* | *[one line]* |
