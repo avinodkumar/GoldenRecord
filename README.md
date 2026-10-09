@@ -57,7 +57,7 @@ docker compose up -d --build
 
 ## Documentation
 
-[00 Positioning](docs/00-positioning.md) · [01 Approach](docs/01-approach.md) · [02 Architecture](docs/02-architecture.md) ·
+[Pitch deck](docs/pitch/) · [00 Positioning](docs/00-positioning.md) · [01 Approach](docs/01-approach.md) · [02 Architecture](docs/02-architecture.md) ·
 [03 Roadmap](docs/03-roadmap.md) · [04 Data model](docs/04-data-model.md) · [05 Matching and quality](docs/05-matching-and-quality.md) ·
 [06 Team](docs/06-team.md) · [07 Demo script](docs/07-demo-script.md) · [08 Dev harness](docs/08-dev-harness.md) ·
 [09 Break-it answers](docs/09-break-it-answers.md) · ADRs [0001](docs/adr/0001-fabric-native-with-local-core.md)–[0007](docs/adr/0007-pattern-queue-and-rule-library.md)
