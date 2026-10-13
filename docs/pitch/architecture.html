@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GoldenRecord architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1920px; height: 1080px; background: #F6F4EE; color: #0F1B2D;
+         font-family: "Segoe UI", "IBM Plex Sans", Arial, sans-serif; position: relative; overflow: hidden; }
+  .abs { position: absolute; }
+  .eyebrow { font-size: 18px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #8A5F00; }
+  h1 { font-size: 44px; font-weight: 700; letter-spacing: -0.5px; }
+  .sub { font-size: 21px; color: #4A5263; }
+  .frame { border: 2px dashed #3B6EA5; border-radius: 18px; background: rgba(227, 238, 248, 0.25); }
+  .frame-label { font-size: 17px; font-weight: 700; color: #1F4E80; letter-spacing: 1px; text-transform: uppercase;
+                 background: #F6F4EE; padding: 0 10px; }
+  .box { border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+  .native { background: #E3EEF8; border: 2px solid #3B6EA5; }
+  .gr { background: #FFF7E0; border: 2px solid #C9971C; }
+  .ext { background: #EDEAE1; border: 2px dashed #9AA0A8; }
+  .tag { font-size: 14px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .native .tag { color: #1F4E80; }
+  .gr .tag { color: #8A5F00; }
+  .ext .tag { color: #6A7180; }
+  .title { font-size: 24px; font-weight: 700; line-height: 1.15; }
+  .body { font-size: 17.5px; line-height: 1.35; color: #3A4252; }
+  .body b { color: #0F1B2D; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .chip { font-size: 15px; padding: 3px 9px; border-radius: 20px; background: #FFFFFF; border: 1px solid #C9971C; color: #5A4300; }
+  .chip.n { border-color: #3B6EA5; color: #1F4E80; }
+  .lbl { font-size: 15px; font-weight: 600; color: #6A3A10; background: #F6F4EE; padding: 1px 6px; border-radius: 6px; }
+  .lbl.b { color: #1F4E80; }
+  .legend { font-size: 18px; color: #4A5263; display: flex; gap: 28px; align-items: center; }
+  .sw { display: inline-block; width: 22px; height: 16px; border-radius: 4px; vertical-align: -2px; margin-right: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="abs" style="left:60px; top:34px;">
+  <div class="eyebrow">Hackathon Track 02 · Team GoldenRecord</div>
+  <h1 style="margin-top:6px;">GoldenRecord architecture on Microsoft Fabric</h1>
+  <div class="sub" style="margin-top:6px;">Fabric detects and scores. GoldenRecord fixes and resolves: safely, by root cause, with an audit trail.</div>
+</div>
+
+<!-- Fabric workspace frame -->
+<div class="abs frame" style="left:320px; top:196px; width:1560px; height:802px;"></div>
+<div class="abs frame-label" style="left:344px; top:184px;">Microsoft Fabric workspace · ws-goldenrecord · single tenant · F2+ capacity</div>
+
+<!-- Sources (outside Fabric) -->
+<div class="abs box ext" style="left:60px; top:246px; width:225px; height:280px;">
+  <div class="tag">Outside Fabric</div>
+  <div class="title">ERP sources</div>
+  <div class="body">ERP_A (SAP-style)<br>ERP_B (Oracle-style)<br>ERP_C (Dynamics-style)<br><br>Vendor masters and invoices, each in its own schema and format</div>
+</div>
+
+<!-- Row A: pipeline -->
+<div class="abs box native" style="left:350px; top:246px; width:265px; height:280px;">
+  <div class="tag">Native · Data Factory</div>
+  <div class="title">Ingest &amp; orchestrate</div>
+  <div class="body"><b>pl_goldenrecord_daily</b> lands extracts in OneLake and runs nb_05 → nb_01 → nb_04 on schedule</div>
+</div>
+
+<div class="abs box gr" style="left:655px; top:246px; width:265px; height:280px;">
+  <div class="tag">01 · Bronze · nb_01</div>
+  <div class="title">Protect PII at the door</div>
+  <div class="body">Phone, email, bank account → <b>keyed tokens</b> (Key Vault) + masked values. Raw values only in <b>pii_vault</b> (OneLake security)</div>
+</div>
+
+<div class="abs box gr" style="left:960px; top:246px; width:265px; height:280px;">
+  <div class="tag">02 · Silver · nb_02</div>
+  <div class="title">Learn once, then look up</div>
+  <div class="body"><b>AI Functions</b> see each <b>distinct</b> unknown value once (Bangalore → Bengaluru). Validated, versioned, reused. Reruns: <b>0 AI calls</b></div>
+</div>
+
+<div class="abs box native" style="left:1265px; top:246px; width:265px; height:280px;">
+  <div class="tag">03 · Detect · nb_03</div>
+  <div class="title">Native detection</div>
+  <div class="body"><b>Materialized lake views</b>: CONSTRAINT … ON MISMATCH DROP (9 rules) + our <b>quarantine view</b> with failed rules. <b>SynapseML</b> Isolation Forest</div>
+</div>
+
+<div class="abs box gr" style="left:1570px; top:246px; width:280px; height:280px;">
+  <div class="tag">04 · Gold · nb_04</div>
+  <div class="title">Resolve into golden records</div>
+  <div class="body">Match scoring, AI only for new grey-zone pairs. <b>Guardrail</b>: no merge across two tax IDs. Survivorship, stable keys, <b>merge lineage</b>, suspect-merge checks</div>
+</div>
+
+<!-- Row B -->
+<div class="abs box native" style="left:350px; top:600px; width:265px; height:215px;">
+  <div class="tag">Native · Data Science</div>
+  <div class="title">MLflow (nb_06)</div>
+  <div class="body">Match classifier trained on steward decisions; registered model</div>
+</div>
+
+<div class="abs box gr" style="left:655px; top:600px; width:265px; height:215px;">
+  <div class="tag">Control · GoldenRecord</div>
+  <div class="title">Versioned rule library</div>
+  <div class="body">Mappings, record fixes, match rules, DQ rules (shadow → enforce), cannot-links. Rollback = retire</div>
+</div>
+
+<div class="abs box gr" style="left:960px; top:600px; width:570px; height:215px;">
+  <div class="tag">Steward workspace · Power BI</div>
+  <div class="title">Approve by root cause, not by row</div>
+  <div class="body">14,006 issues → <b>61 patterns</b>; one click fixes a whole pattern, now and on future loads</div>
+  <div class="chips">
+    <span class="chip n">Translytical task flows</span><span class="chip n">User Data Functions</span>
+    <span class="chip n">Fabric SQL database inbox</span><span class="chip">nb_05 → library v+1</span>
+  </div>
+</div>
+
+<div class="abs box native" style="left:1570px; top:600px; width:280px; height:215px;">
+  <div class="tag">Native · Power BI</div>
+  <div class="title">Certified semantic model</div>
+  <div class="body">Direct Lake on <b>gold_spend_certified</b> only → executive spend &amp; trust reports</div>
+</div>
+
+<!-- Row C -->
+<div class="abs box native" style="left:350px; top:858px; width:720px; height:112px;">
+  <div class="tag">Native · Activator</div>
+  <div class="body" style="font-size:18px;"><b>Alerts:</b> a source's quality score drops · suspect golden records · anomaly spikes, each with a plain-English cause</div>
+</div>
+
+<div class="abs box native" style="left:1110px; top:858px; width:740px; height:112px;">
+  <div class="tag">Native · Governance</div>
+  <div class="body" style="font-size:18px;"><b>OneLake security</b> roles (pii-custodian, steward, analyst) · <b>Key Vault</b> · MLV lineage · Purview labels &amp; scorecard (optional)</div>
+</div>
+
+<!-- Arrows -->
+<svg class="abs" style="left:0; top:0;" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#5B6472"/>
+    </marker>
+    <marker id="g" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#B5761A"/>
+    </marker>
+    <marker id="b" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#3B6EA5"/>
+    </marker>
+  </defs>
+  <g stroke="#5B6472" stroke-width="3" fill="none" marker-end="url(#a)">
+    <line x1="285" y1="386" x2="346" y2="386"/>
+    <line x1="615" y1="386" x2="651" y2="386"/>
+    <line x1="920" y1="386" x2="956" y2="386"/>
+    <line x1="1225" y1="386" x2="1261" y2="386"/>
+    <line x1="1530" y1="386" x2="1566" y2="386"/>
+  </g>
+  <!-- Gold -> certified model -->
+  <line x1="1710" y1="526" x2="1710" y2="596" stroke="#3B6EA5" stroke-width="3" marker-end="url(#b)"/>
+  <!-- Gold -> steward patterns -->
+  <path d="M1600,526 L1600,560 L1400,560 L1400,596" stroke="#B5761A" stroke-width="3" fill="none" marker-end="url(#g)"/>
+  <!-- Steward -> rule library -->
+  <line x1="960" y1="740" x2="924" y2="740" stroke="#B5761A" stroke-width="3" marker-end="url(#g)"/>
+  <!-- Rule library -> Silver (mappings / fixes) -->
+  <path d="M787,600 L787,570 L1092,570 L1092,530" stroke="#B5761A" stroke-width="3" fill="none" stroke-dasharray="8 6" marker-end="url(#g)"/>
+  <!-- Steward decisions -> MLflow -->
+  <path d="M990,815 L990,838 L482,838 L482,819" stroke="#3B6EA5" stroke-width="2.5" fill="none" stroke-dasharray="6 6" marker-end="url(#b)"/>
+</svg>
+
+<!-- Arrow labels -->
+<div class="abs lbl" style="left:1420px; top:548px;">61 root-cause patterns</div>
+<div class="abs lbl" style="left:810px; top:558px;">approved rules applied to every record</div>
+<div class="abs lbl b" style="left:1720px; top:548px;">Gold only</div>
+<div class="abs lbl b" style="left:620px; top:827px;">steward labels</div>
+
+<!-- Legend -->
+<div class="abs legend" style="left:60px; top:1020px;">
+  <span><span class="sw" style="background:#E3EEF8; border:2px solid #3B6EA5;"></span>Native Fabric service</span>
+  <span><span class="sw" style="background:#FFF7E0; border:2px solid #C9971C;"></span>GoldenRecord, built on Fabric</span>
+  <span>Measured: 1,185 records repaired · 1,727 of 1,743 duplicate vendors merged · 99.1% of spend on the right vendor · 0 AI calls on rerun</span>
+</div>
+
+</body>
+</html>
