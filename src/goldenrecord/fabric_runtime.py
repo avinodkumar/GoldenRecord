@@ -47,9 +47,21 @@ class FabricLakehouse:
 
     def write(self, name: str, df: pd.DataFrame, mode: str = "overwrite") -> None:
         from pyspark.sql import functions as F
-        from pyspark.sql.types import NullType
+        from pyspark.sql.pandas.types import from_arrow_type
+        from pyspark.sql.types import NullType, StringType, StructField, StructType
 
-        sdf = self.spark.createDataFrame(_to_arrow(df).to_pandas())
+        table = _to_arrow(df)
+        if table.num_rows == 0:  # Spark cannot infer a schema from an empty frame
+            fields = []
+            for f in table.schema:
+                try:
+                    dtype = from_arrow_type(f.type)
+                except Exception:  # noqa: BLE001  unsupported arrow type: store as string
+                    dtype = StringType()
+                fields.append(StructField(f.name, StringType() if isinstance(dtype, NullType) else dtype, True))
+            sdf = self.spark.createDataFrame([], StructType(fields))
+        else:
+            sdf = self.spark.createDataFrame(table.to_pandas())
         for field in sdf.schema.fields:  # Delta cannot store an all-null (NullType) column
             if isinstance(field.dataType, NullType):
                 sdf = sdf.withColumn(field.name, F.col(field.name).cast("string"))
