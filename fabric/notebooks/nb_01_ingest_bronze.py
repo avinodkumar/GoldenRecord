@@ -10,7 +10,11 @@ pii_secret_name = "goldenrecord-pii-token-key"
 import os
 import notebookutils
 
-os.environ["PII_TOKEN_KEY"] = notebookutils.credentials.getSecret(key_vault_uri, pii_secret_name)
+try:
+    os.environ["PII_TOKEN_KEY"] = notebookutils.credentials.getSecret(key_vault_uri, pii_secret_name)
+    print("PII key loaded from Key Vault")
+except Exception as e:  # sandbox without Key Vault: package dev key (tokens stay deterministic)
+    print("WARNING: Key Vault not reachable, using dev PII key:", type(e).__name__)
 
 # %% Ingest
 from datetime import datetime, timezone
