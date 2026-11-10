@@ -1,0 +1,149 @@
+# GoldenRecord pitch video: narration + visuals per segment.
+# focus = [x, y] on the 1920x1080 frame to drift towards; zoom = end zoom (start 1.0). live = show the harness badge.
+# Swap a live frame for a Fabric capture later by replacing its file name; timings follow the narration.
+voice: en-US-AndrewNeural
+rate: "+0%"
+segments:
+  - id: s01_problem
+    title: The problem
+    text: >
+      Every enterprise that runs more than one ERP has the same problem. The same vendor lives under different
+      IDs, names and formats in each system. In our test bed, three ERPs hold 52,000 records, and about half of
+      them carry a defect: 14,006 open issues, and 1,743 real vendors split across several IDs. Leaders stop
+      trusting the spend numbers, and every team builds its own.
+    visuals:
+      - {file: slide_01.png, weight: 1, zoom: 1.04}
+      - {file: slide_02.png, weight: 2, zoom: 1.06, focus: [960, 600]}
+
+  - id: s02_pov
+    title: Our point of view
+    text: >
+      Here is our point of view. Microsoft Fabric already tells you your data is bad. Materialized lake view
+      constraints, Activator and Purview detect and score very well. What nobody gives you is the fix. Bad rows
+      are silently dropped, fixes come back on the next load, and stewards are asked to review records one by one.
+      GoldenRecord is the layer on top. It quarantines every bad record with a reason, repairs it with rules
+      learned once, resolves vendors into one golden record, and lets a steward approve fixes by root cause.
+    visuals:
+      - {file: slide_03.png, weight: 1, zoom: 1.04}
+      - {file: slide_04.png, weight: 2, zoom: 1.08, focus: [960, 560]}
+
+  - id: s03_architecture
+    title: Architecture on Fabric
+    text: >
+      Everything runs in one Fabric workspace. A Data Factory pipeline lands three ERP extracts in OneLake. At
+      Bronze, phone numbers, emails and bank accounts are tokenized and masked. Raw values live only in a vault,
+      locked down with OneLake security. In Silver, Fabric AI Functions see each distinct unknown value once.
+      Bangalore becomes Bengaluru, and that answer is validated, versioned, and reused deterministically.
+      Materialized lake views enforce nine rules natively, and our quarantine view keeps every dropped row with
+      the rules it failed. In Gold, agents resolve vendors into golden records behind a guardrail. Stewards work
+      in Power BI with translytical task flows, and Activator alerts when a source's quality drops.
+    visuals:
+      - {file: arch.png, weight: 1, zoom: 1.0}
+      - {file: arch.png, weight: 2, zoom: 1.7, focus: [700, 380]}
+      - {file: arch.png, weight: 2, zoom: 1.7, focus: [1450, 380]}
+      - {file: arch.png, weight: 2, zoom: 1.5, focus: [1100, 760]}
+
+  - id: s04_first_run
+    title: A real run
+    text: >
+      What you see next is a real run, not a mock-up. It is our offline development harness, running the same
+      tested Python package as the Fabric notebooks, on 52,000 synthetic records with seeded defects, so every
+      number can be checked against ground truth. The first run takes about 20 seconds. The data quality score
+      goes from 70 percent in Silver to 99 percent in Gold. This run uses the rules-only mode, so it makes no AI
+      calls at all.
+    visuals:
+      - {file: 10_overview_first_run.png, weight: 1, zoom: 1.0, live: true}
+      - {file: 10_overview_first_run.png, weight: 2, zoom: 1.7, focus: [760, 210], live: true}
+
+  - id: s05_patterns
+    title: Decide by root cause
+    text: >
+      14,006 issue records. No steward can review those one by one. So GoldenRecord groups them by root cause:
+      61 patterns, and the top 10 cover 81 percent of all issues. Each pattern carries one proposed fix. Here,
+      320 invoices from ERP B have a blank currency. The fix is to use the vendor's country currency. One click
+      approves it for all 320 records, and for every future record with the same root cause.
+    visuals:
+      - {file: 11_pattern_queue.png, weight: 2, zoom: 1.3, focus: [700, 330], live: true}
+      - {file: 12_pattern_expanded.png, weight: 2, zoom: 1.7, focus: [1000, 860], live: true}
+
+  - id: s06_fixed
+    title: Fix once, apply everywhere
+    text: >
+      A steward works through the queue with 58 decisions, and the pipeline reruns. 1,185 records are repaired,
+      each one stamped with the rule that fixed it. Golden vendors drop from 3,198 to 3,016, against 3,000 real
+      vendors. Match recall rises to 99 percent, with 100 percent precision. Every decision is now an item in a
+      versioned rule library, at version 59, and rolling back means retiring a version. The executive spend
+      report reads only governed Gold data.
+    visuals:
+      - {file: 20_overview_after_patterns.png, weight: 2, zoom: 1.7, focus: [760, 210], live: true}
+      - {file: 21_rule_library.png, weight: 1, zoom: 1.35, focus: [1000, 420], live: true}
+      - {file: 22_executive_spend.png, weight: 1, zoom: 1.2, focus: [1000, 450], live: true}
+
+  - id: s07_wrong_rule
+    title: "Break it: a wrong rule"
+    text: >
+      Now let's try to break it. A steward types a rule in plain English, but makes a mistake: invoice amount must
+      not exceed 1,000, instead of one million. Before anything is saved, GoldenRecord previews the impact by
+      source. This rule would fail 95 percent of invoices, so it is blocked. Even an accepted rule starts in shadow
+      mode, flagging records without quarantining any, until a steward promotes it.
+    visuals:
+      - {file: 30_rule_blocked.png, weight: 1, zoom: 1.5, focus: [760, 330], live: true}
+      - {file: 30_rule_blocked.png, weight: 2, zoom: 1.45, focus: [760, 640], live: true}
+
+  - id: s08_false_merge
+    title: "Break it: a false merge"
+    text: >
+      Second failure mode: a tired steward merges two different companies. On the next run, the consistency check
+      flags the golden record: two different valid tax IDs, and two different bank accounts. Explain shows every
+      merge in that record, and who made it. Here, it was the steward. Unmerge adds a versioned cannot-link. The
+      records separate, the larger side keeps its master key, and the link holds on every future run.
+    visuals:
+      - {file: 40_suspect_merge.png, weight: 2, zoom: 1.5, focus: [1000, 300], live: true}
+      - {file: 41_explain_merge.png, weight: 2, zoom: 1.35, focus: [1000, 620], live: true}
+      - {file: 42_after_unmerge.png, weight: 1, zoom: 1.6, focus: [700, 260], live: true}
+
+  - id: s09_alerts
+    title: "Break it: a bad batch"
+    text: >
+      Third: a broken batch of 3,000 invoices arrives from ERP A. The Sentinel agent raises three alerts, including
+      a drop in ERP A's quality score, and explains the cause: currency, date and outlier failures jumped. In
+      Fabric, Activator routes this alert to the source's data owner.
+    visuals:
+      - {file: 50_alerts.png, weight: 2, zoom: 1.45, focus: [1000, 300], live: true}
+      - {file: 50_alerts.png, weight: 1, zoom: 1.3, focus: [1000, 680], live: true}
+
+  - id: s10_measured
+    title: Measured
+    text: >
+      Does it beat what Fabric does alone? We measured it on the same seeded dataset. Native constraints catch
+      the bad rows, but give no reason per row, repair nothing, and merge no duplicates. GoldenRecord, after 58
+      steward decisions, repairs 1,185 records, merges 1,727 of 1,743 duplicated vendors, and puts 99.1 percent of
+      Gold spend on the right vendor. An LLM on every row would need 107,525 calls per run. Ours makes zero on a
+      rerun, and the output is the same every time.
+    visuals:
+      - {file: 61_ablation.png, weight: 3, zoom: 1.3, focus: [760, 380], live: true}
+      - {file: slide_10.png, weight: 2, zoom: 1.05}
+
+  - id: s11_trust
+    title: Tested, protected, Fabric-native
+    text: >
+      25 automated tests cover the agents, the guardrail, and the three break-it scenarios. They also prove that
+      the constraint SQL we generate for Fabric fails exactly the records our engine fails, and that no raw
+      personal data appears in Bronze, Silver or Gold. In Fabric, the same agents run unchanged through two
+      adapters: OneLake Delta tables, and Fabric AI Functions, with no keys to manage.
+    visuals:
+      - {file: 60_tests.png, weight: 1, zoom: 2.2, focus: [520, 150], live: true}
+      - {file: 71_mlv_sql.png, weight: 2, zoom: 1.15, focus: [960, 520]}
+      - {file: 70_fabric_notebook.png, weight: 2, zoom: 1.12, focus: [960, 600]}
+
+  - id: s12_close
+    title: Why us
+    text: >
+      Teams that configure Purview and constraints will detect, but not fix. Teams that run an LLM over every row
+      will pay for it on every load, and cannot audit it. Teams that only deduplicate will merge without
+      survivorship, or a way back. GoldenRecord fixes, resolves, and stays reversible. We are Team GoldenRecord.
+      Fabric finds it. GoldenRecord fixes it. Thank you.
+    visuals:
+      - {file: slide_11.png, weight: 2, zoom: 1.05}
+      - {file: slide_16.png, weight: 1, zoom: 1.04}
+      - {file: slide_18.png, weight: 1, zoom: 1.04}
